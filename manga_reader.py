@@ -12,6 +12,7 @@ from socket import timeout as TimeoutException
 from urllib import error
 from urllib import parse
 from urllib import request
+import threading
 
 from bs4 import BeautifulSoup as Soup
 
@@ -326,7 +327,7 @@ class MangaReader(object):
             self._logger.debug("Moving into directory: {}".format(chapter_dir_name))
 
             for chapter_page in range(1, chapter_page_count + 1):
-                image_name = "{}-{:02d}.jpeg".format(chapter_num, chapter_page)
+                image_name = "{:03d}-{}.jpeg".format(chapter_num, chapter_page)
                 if os.path.exists(image_name):
                     self._logger.debug("Chapter page {} exists already. Skipping to next.".format(image_name))
                 else:
