@@ -1,39 +1,40 @@
 #!/usr/bin/env python3
 
-
 # -----------------------------------------------------------------------------
 
-from urllib import request
+import logging as log
+import os
+import pickle
+import sys
+import time
+from http import cookiejar
+from socket import timeout as TimeoutException
 from urllib import error
 from urllib import parse
-from http import cookiejar
+from urllib import request
+
 from bs4 import BeautifulSoup as Soup
-import time
-import os
-import sys
-import logging as log
-from socket import timeout as TimeoutException
-import pickle
 
 # -----------------------------------------------------------------------------
 
-_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " \
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " \
               "AppleWebKit/537.36 (KHTML, like Gecko) " \
               "Chrome/76.0.3809.132 Safari/537.36 OPR/63.0.3368.107"
 
-_ACCEPT_ENCODING = "deflate"
+ACCEPT_ENCODING = "deflate"
 
-_INFO = log.INFO
-_DEBUG = log.DEBUG
-_ERROR = log.ERROR
-_CRITICAL = log.CRITICAL
+INFO = log.INFO
+DEBUG = log.DEBUG
+ERROR = log.ERROR
+CRITICAL = log.CRITICAL
 
 # -----------------------------------------------------------------------------
 
 
 class MangaReader(object):
 
-    def __init__(self, manga_url, target_dir='.', debug_level=_DEBUG, wait_time=5, time_out=10, retries=3, retry_after=10):
+    def __init__(self, manga_url, target_dir='.', wait_time=5, time_out=10, retries=3,
+                 retry_after=10, debug_level=DEBUG):
 
         manga_url = manga_url.strip("/")
 
@@ -58,7 +59,7 @@ class MangaReader(object):
         self.__cookie_jar = cookiejar.CookieJar()
         self.__cookie_processor = request.HTTPCookieProcessor(self.__cookie_jar)
         self._req_opener = request.build_opener(self.__cookie_processor)
-        self._req_opener.addheaders = [("User-Agent", _USER_AGENT), ("Accept-Encoding", _ACCEPT_ENCODING)]
+        self._req_opener.addheaders = [("User-Agent", USER_AGENT), ("Accept-Encoding", ACCEPT_ENCODING)]
 
         self._time_out = time_out
         self._retry_count = retries if retries > 0 else 3
@@ -127,7 +128,7 @@ class MangaReader(object):
             if not os.path.exists(path_drive):
                 self._logger.critical("Can't create folder, drive {} doesn't exist!".format(path_drive))
             else:
-                os.chdir(path_drive+os.path.sep)
+                os.chdir(path_drive + os.path.sep)
 
         path_components = dir_path.split(os.path.sep)
         for folder in path_components:
@@ -212,7 +213,7 @@ class MangaReader(object):
                 if retry_count > 0:
                     self._logger.debug("Retrying after {} seconds...".format(self._retry_after))
                     time.sleep(self._retry_after)
-                    return self.get_page_source(url, (retry_count-1))
+                    return self.get_page_source(url, (retry_count - 1))
                 else:
                     self._logger.critical("Can't request URL {}. Exceeded max retries".format(url))
 
@@ -265,7 +266,7 @@ class MangaReader(object):
         else:
             if retry_count > 0:
                 self._logger.debug("Retrying to get manga's chapter info.")
-                self.get_chapter_list(retry_count=(retry_count-1))
+                self.get_chapter_list(retry_count=(retry_count - 1))
             else:
                 self._logger.critical("Exceeded maximum retry count! Failed to get chapter list!")
 
@@ -296,7 +297,7 @@ class MangaReader(object):
         if os.path.exists(data_file):
             with open(data_file, "rb") as fh:
                 self._available_chapters = pickle.load(file=fh)
-            self._logger.info("Loaded available chapter list")
+            self._logger.info("Loaded available chapters list")
             status = True
         else:
             self._logger.error("No chapter list found!")
@@ -313,7 +314,7 @@ class MangaReader(object):
         chapter_url, chapter_page_count = self._available_chapters.get(chapter_num, (None, 0))
 
         if chapter_url:
-            self._logger.info("Getting chapter {} pages..".format(chapter_num))
+            self._logger.info("Getting chapter {}:{} pages.".format(chapter_num, chapter_page_count))
             chapter_dir_name = "CH-{:03d}".format(chapter_num)
 
             if not os.path.exists(chapter_dir_name):
@@ -324,19 +325,18 @@ class MangaReader(object):
             os.chdir(chapter_dir_name)
             self._logger.debug("Moving into directory: {}".format(chapter_dir_name))
 
-            for chapter_page in range(1, chapter_page_count+1):
+            for chapter_page in range(1, chapter_page_count + 1):
                 image_name = "{}-{:02d}.jpeg".format(chapter_num, chapter_page)
                 if os.path.exists(image_name):
-                    self._logger.debug("Chapter page {} exists already. Skipping to next page..".format(image_name))
+                    self._logger.debug("Chapter page {} exists already. Skipping to next.".format(image_name))
                 else:
                     self.get_chapter_page(chapter_num, chapter_page)
 
             os.chdir(self._target_dir)
-            self._logger.info("Finished downloading chapter {}".format(chapter_num))
+            self._logger.info("Finished downloading chapter {}: {} pages".format(chapter_num, chapter_page_count))
 
         else:
             self._logger.critical("Chapter {} isn't available in the chapter list!")
-            self._logger.debug("Available chapters: {}".format(self._available_chapters.keys()))
 
     def get_chapter_page(self, chapter_num, page_num, retry_count=3):
         """
@@ -364,33 +364,32 @@ class MangaReader(object):
                     image_url = image_obj[0].get("src")
                     image_name = "{:03d}-{}.jpeg".format(chapter_num, page_num)
                     self.save_image(image_url, image_name)
+                    self._logger.info("Saved chapter page: {} of {} pages".format(page_num, chapter_pages_count))
                 else:
                     self._logger.critical("Failed to locate image {}-{}".format(chapter_num, page_num))
 
             else:
                 if retry_count > 0:
-                    self.get_chapter_page(chapter_num, page_num, retry_count=(retry_count-1))
+                    self.get_chapter_page(chapter_num, page_num, retry_count=(retry_count - 1))
                 else:
-                    self._logger.critical("Failed to get chapter page: {}-{}! Max retry exceeded!".format(chapter_num, page_num))
+                    self._logger.critical(
+                        "Failed to get chapter page: {}-{}! Max retry exceeded!".format(chapter_num, page_num))
 
     def save_image(self, image_url, image_name):
         status, image_source = self.get_page_source(image_url)
         if status:
             with open(image_name, "wb") as fh:
                 fh.write(image_source)
-            self._logger.info("Saved image: {}".format(image_name))
+            self._logger.debug("Saved image: {}".format(image_name))
         else:
             self._logger.error("Failed to download image: {}".format(image_name))
-
-    def exception_handler(self, exception):
-        pass
 
     def carry_command(self, command, *kwargs):
         pass
 
     def statistics(self):
         self._logger.info("[Statistics]:Total requests made: {}".format(self._total_req_count))
-        self._logger.info("[Statistics]: Total bytes downloaded: {} MB".format(self._total_bytes/(1024*1024)))
+        self._logger.info("[Statistics]: Total bytes downloaded: {} MB".format(self._total_bytes / (1024 * 1024)))
 
     def grab_all_chapters(self):
         """
@@ -413,12 +412,8 @@ class MangaReader(object):
             self.get_chapter(chapter_num, retry_count=3)
         self._logger.info("Got all chapters successfully!")
 
-    def check_last_chapter(self):
-        pass
-
 
 if __name__ == '__main__':
-
     # manga_url = r"https://www.mangareader.net/onepunch-man"
     # manga_url = r"https://www.mangareader.net/world-trigger"
     manga_url = r"https://www.mangareader.net/shingeki-no-kyojin"
@@ -426,4 +421,3 @@ if __name__ == '__main__':
     c = MangaReader(manga_url, target_dir=r"E:\Manga\Attack On Titan", wait_time=1)
     c.grab_all_chapters()
     c.statistics()
-
